@@ -9,7 +9,7 @@ from torch.utils.data import Dataset, DataLoader
 import matplotlib.pyplot as plt
 
 # ===============================
-# 1️⃣ Exemple de DataFrame d'entraînement et de test
+# 1️⃣ DataFrame d'entraînement et de test
 # ===============================
 name_test = "C:/Users/joach/OneDrive/Documents/entrainement/test_hmp/TF1_test_set.xlsx"
 name = "C:/Users/joach/OneDrive/Documents/entrainement/test_hmp/TF1_train_set.csv"
@@ -17,17 +17,24 @@ name = "C:/Users/joach/OneDrive/Documents/entrainement/test_hmp/TF1_train_set.cs
 df_train = pd.read_csv(name, sep = ";").iloc[:500, :]
 df_test = pd.read_excel(name_test).iloc[:500, :]
 df_test = df_test.dropna()
+df_tot = df_train.merge(df_test, on="visitor_id")
+df_train = df_tot.iloc[:,:-1]
+df_test = pd.concat([df_tot.iloc[:, :1], df_tot.iloc[:, -1:]], axis=1)
 
+
+seq_length = 10
 cols = df_train.columns.drop("visitor_id")
 
 df_train[cols] = df_train[cols].apply(lambda x: x % 7)
+
+
 # ===============================
 # 2️⃣ Création des séquences glissantes
 # ===============================
 def create_sequences_from_df(df, seq_length=10):
     X, y = [], []
     for _, row in df.iterrows():
-        values = row.dropna().values[1:]  # on ignore la colonne 'id'
+        values = row.dropna().values[1:]
         if len(values) <= seq_length:
             continue
         for i in range(len(values) - seq_length):
@@ -35,14 +42,24 @@ def create_sequences_from_df(df, seq_length=10):
             target = int(values[i + seq_length])
             X.append(seq)
             y.append(target)
-    return np.array(X, dtype=float), np.array(y, dtype=int)
+    return np.array(X, dtype=int), np.array(y, dtype=int)
 
-X_train, y_train = create_sequences_from_df(df_train, seq_length=3)
-X_test, y_test = create_sequences_from_df(df_test, seq_length=3)
+X_train, y_train = create_sequences_from_df(df_train, seq_length=seq_length)
+X_test, y_test = [], []
+
+for _, row in df_train.iterrows():
+    values = row.dropna().values[1:]
+    X_test.append(values[len(values) - seq_length:])
+for _, row in df_test.iterrows():
+    values = row.dropna().values[1:]
+    y_test.append(values[0])
+X_test, y_test = np.array(X_test, dtype=int), np.array(y_test, dtype=int)%7
 
 print(f"X_train shape: {X_train.shape}, y_train shape: {y_train.shape}")
 print(f"X_test shape: {X_test.shape}, y_test shape: {y_test.shape}")
 
+print("train", np.unique(y_train))
+print("test", np.unique(y_test))
 # ===============================
 # 3️⃣ Dataset et DataLoader
 # ===============================
@@ -109,6 +126,7 @@ for epoch in range(n_epochs):
     with torch.no_grad():
         for X_batch, y_batch in test_loader:
             logits = model(X_batch)
+
             loss = criterion(logits, y_batch)
             total_loss += loss.item() * len(X_batch)
             preds = torch.argmax(logits, dim=1)
